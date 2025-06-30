@@ -3,13 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-time Transcription & Sales Coach</title>
+    <title>AI Sales Co-Pilot</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #2c3e50 0%, #4ca1af 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
-        .container { background: rgba(255, 255, 255, 0.98); border-radius: 20px; padding: 30px; max-width: 1200px; width: 100%; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2); }
-        .header { text-align: center; margin-bottom: 20px; }
-        .header h1 { font-size: 2.2rem; background: linear-gradient(135deg, #2c3e50, #4ca1af); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        html, body { height: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #f4f7f6; display: flex; }
+
+        /* --- Sidebar for Context Form --- */
+        .sidebar {
+            width: 350px;
+            background: #ffffff;
+            padding: 25px;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+        }
+        .sidebar h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        #saveContextBtn {
+            width: 100%;
+            padding: 12px;
+            font-size: 1.1rem;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #saveContextBtn:hover { background: #218838; }
+
+        /* --- Main Content Area --- */
+        .main-content {
+            flex-grow: 1;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+        }
+        .container { width: 100%; max-width: 1200px; margin: 0 auto; }
+        .header h1 { text-align: center; font-size: 2.2rem; background: linear-gradient(135deg, #2c3e50, #4ca1af); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 20px; }
         .controls { display: flex; gap: 20px; justify-content: center; margin-bottom: 10px; }
         button { background: linear-gradient(135deg, #2c3e50, #4ca1af); border: none; color: white; padding: 12px 24px; border-radius: 10px; font-size: 1rem; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; min-width: 150px; }
         button:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.15); }
@@ -22,41 +79,57 @@
         .recording-indicator.active { display: flex; }
         .recording-dot { width: 12px; height: 12px; background: #e53e3e; border-radius: 50%; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        .content-wrapper { display: flex; gap: 20px; margin-top: 20px; }
+        .content-wrapper { display: flex; gap: 20px; margin-top: 20px; flex-grow: 1; }
         .content-box { flex: 1; display: flex; flex-direction: column; }
         .content-box h2 { text-align: center; margin-bottom: 10px; color: #555; }
-        .transcription-area, .notes-area { background: #f8f9fa; border: 2px solid #e1e5e9; border-radius: 15px; padding: 20px; height: 300px; overflow-y: auto; line-height: 1.6; }
+        .transcription-area, .notes-area { background: #ffffff; border: 1px solid #e1e5e9; border-radius: 15px; padding: 20px; flex-grow: 1; overflow-y: auto; line-height: 1.6; }
         .transcription-area p { margin-bottom: 12px; }
         .notes-area p { font-style: italic; color: #0056b3; margin-bottom: 12px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎤 Real-time Transcription & Sales Coach</h1>
-        </div>
-
-        <!-- API Key inputs have been removed -->
-
-        <div class="controls">
-            <button id="startBtn" disabled>Start Recording</button>
-            <button id="stopBtn" disabled>Stop Recording</button>
-        </div>
-
-        <div id="status" class="status disconnected">Initializing...</div>
-        <div class="recording-indicator" id="recordingIndicator">
-            <div class="recording-dot"></div>
-            <span>Recording...</span>
-        </div>
-
-        <div class="content-wrapper">
-            <div class="content-box">
-                <h2>Live Transcription</h2>
-                <div id="transcription" class="transcription-area"></div>
+    <div class="sidebar">
+        <h2>Call Context</h2>
+        <form id="context-form">
+            <div class="form-group">
+                <label for="customerName">Customer Name</label>
+                <input type="text" id="customerName" placeholder="e.g., Jane Doe">
             </div>
-            <div class="content-box">
-                <h2>✨ AI Sales Notes</h2>
-                <div id="sales-notes" class="notes-area"></div>
+            <div class="form-group">
+                <label for="callObjective">Call Objective</label>
+                <textarea id="callObjective" placeholder="e.g., Introduce new product features, close the deal."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="customerProblems">Customer's Problems</label>
+                <textarea id="customerProblems" placeholder="e.g., Current software is too slow, needs better reporting."></textarea>
+            </div>
+            <button type="button" id="saveContextBtn">Save Context</button>
+        </form>
+    </div>
+
+    <div class="main-content">
+        <div class="container">
+            <div class="header">
+                <h1>AI Sales Co-Pilot</h1>
+            </div>
+
+            <div class="controls">
+                <button id="startBtn" disabled>Start Recording</button>
+                <button id="stopBtn" disabled>Stop Recording</button>
+            </div>
+
+            <div id="status" class="status disconnected">Initializing...</div>
+            <div class="recording-indicator" id="recordingIndicator"></div>
+
+            <div class="content-wrapper">
+                <div class="content-box">
+                    <h2>Live Transcription</h2>
+                    <div id="transcription" class="transcription-area"></div>
+                </div>
+                <div class="content-box">
+                    <h2>✨ AI Sales Notes</h2>
+                    <div id="sales-notes" class="notes-area"></div>
+                </div>
             </div>
         </div>
     </div>
