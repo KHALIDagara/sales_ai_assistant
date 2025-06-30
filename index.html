@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Transcription</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .container { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 20px; padding: 40px; max-width: 800px; width: 100%; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 { color: #333; font-size: 2.5rem; margin-bottom: 10px; background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .controls { display: flex; gap: 20px; justify-content: center; margin-bottom: 20px; }
+        button { background: linear-gradient(135deg, #667eea, #764ba2); border: none; color: white; padding: 12px 24px; border-radius: 10px; font-size: 1rem; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; min-width: 150px; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3); }
+        button:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+        .status { text-align: center; margin-bottom: 20px; font-weight: 600; padding: 10px; border-radius: 10px; }
+        .status.disconnected { background: #fee; color: #c33; }
+        .status.connecting { background: #fef6e7; color: #d69e2e; }
+        .status.connected { background: #edf7ed; color: #38a169; }
+        .transcription-area { background: #f8f9fa; border: 2px solid #e1e5e9; border-radius: 15px; padding: 30px; min-height: 200px; margin-top: 20px; font-size: 1.2rem; line-height: 1.6; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; }
+        .transcription-area:empty::before { content: "Click 'Start Recording' and begin speaking..."; color: #999; font-style: italic; }
+        .recording-indicator { display: none; align-items: center; justify-content: center; gap: 10px; color: #e53e3e; font-weight: 600; margin-top: 20px; }
+        .recording-indicator.active { display: flex; }
+        .recording-dot { width: 12px; height: 12px; background: #e53e3e; border-radius: 50%; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎤 Real-time Transcription</h1>
+        </div>
+
+        <div id="status" class="status disconnected">Initializing...</div>
+
+        <div class="controls">
+            <button id="startBtn" disabled>Start Recording</button>
+            <button id="stopBtn" disabled>Stop Recording</button>
+        </div>
+
+        <div class="recording-indicator" id="recordingIndicator">
+            <div class="recording-dot"></div>
+            <span>Recording...</span>
+        </div>
+
+        <div id="transcription" class="transcription-area"></div>
+    </div>
+
+    <script src="index.js"></script>
+</body>
+</html>
