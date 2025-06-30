@@ -1,25 +1,27 @@
-// WARNING: It is not secure to expose your API key directly in client-side code.
-const GLADIA_API_KEY = '4613b547-3658-4ba1-a35c-e1571ab52c11';
-
 class TranscriptionApp {
   constructor() {
-    // Configuration
-    this.apiKey = GLADIA_API_KEY;
-    this.sampleRate = 16000;
-    this.session_id = null; // To store the session ID from Gladia
+    // --- API Keys are hardcoded here ---
+    this.gladiaApiKey = '4613b547-3658-4ba1-a35c-e1571ab52c11';
+    this.geminiApiKey = 'AIzaSyBEl9--RnImGi50jNdq7_nfvHAcg7biOsw';
 
-    // Application State
+    // --- Configuration ---
+    this.sampleRate = 16000;
+    this.session_id = null;
+
+    // --- Application State ---
     this.ws = null;
     this.isRecording = false;
     this.audioContext = null;
     this.mediaStream = null;
     this.processor = null;
+    this.fullTranscript = "";
 
-    // DOM Elements
+    // --- DOM Elements ---
     this.startBtn = document.getElementById('startBtn');
     this.stopBtn = document.getElementById('stopBtn');
     this.statusEl = document.getElementById('status');
     this.transcriptionEl = document.getElementById('transcription');
+    this.notesEl = document.getElementById('sales-notes');
     this.recordingIndicator = document.getElementById('recordingIndicator');
 
     this.initialize();
@@ -40,23 +42,26 @@ class TranscriptionApp {
     this.statusEl.className = `status ${className}`;
   }
 
-  // --- THIS FUNCTION IS COMPLETELY REWRITTEN FOR THE NEW V2/LIVE WORKFLOW ---
   async connect() {
+    if (!this.gladiaApiKey) {
+      this.updateStatus('Gladia API Key is missing.', 'disconnected');
+      return;
+    }
+
     this.updateStatus('Requesting session from Gladia...', 'connecting');
 
     try {
-      // Step 1: Call the /v2/live endpoint to get a temporary WebSocket URL
       const response = await fetch('https://api.gladia.io/v2/live', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Gladia-Key': this.apiKey, // Use the correct header name
+          'X-Gladia-Key': this.gladiaApiKey,
         },
         body: JSON.stringify({
-          encoding: 'wav/pcm', // As per the new docs
+          encoding: 'wav/pcm',
           sample_rate: this.sampleRate,
-          bit_depth: 16,
-          channels: 1,
+          model: 'fast',
+          // "language: 'en'" was removed from here, as it's not a valid parameter.
         }),
       });
 
@@ -67,88 +72,77 @@ class TranscriptionApp {
 
       const session = await response.json();
       this.session_id = session.id;
-      const socketUrl = session.url;
-
-      this.updateStatus('Connecting to WebSocket...', 'connecting');
-
-      // Step 2: Connect to the temporary WebSocket URL
-      this.ws = new WebSocket(socketUrl);
+      this.ws = new WebSocket(session.url);
 
       this.ws.onopen = () => {
         this.updateStatus('Connected to Gladia', 'connected');
         this.startBtn.disabled = false;
       };
 
-      // This message handler is updated to match the new documentation's format
-      this.ws.onmessage = (event) => {
+      this.ws.onmessage = async (event) => {
         const message = JSON.parse(event.data.toString());
-        if (message.type === 'transcript' && message.data && message.data.is_final && message.data.utterance) {
-          const text = message.data.utterance.text;
-          if (text) { // Ensure the utterance is not empty
-            this.appendTranscription(text);
-          }
+        if (message.type === 'transcript' && message.data?.is_final && message.data?.utterance?.text) {
+          const utterance = message.data.utterance.text;
+          this.appendTranscription(utterance);
+          this.fullTranscript += utterance + " ";
+          await this.getSalesNotes(this.fullTranscript);
         }
       };
 
-      this.ws.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-        this.updateStatus('Connection Error', 'disconnected');
-      };
-
-      this.ws.onclose = () => {
-        this.updateStatus('Disconnected', 'disconnected');
-        this.startBtn.disabled = true;
-        this.stopBtn.disabled = true;
-      };
+      this.ws.onerror = () => this.updateStatus('Connection Error', 'disconnected');
+      this.ws.onclose = () => this.updateStatus('Disconnected', 'disconnected');
 
     } catch (error) {
       console.error(error);
-      this.updateStatus(`Connection Failed: ${error.message}`, 'disconnected');
+      this.updateStatus(`${error.message}`, 'disconnected');
     }
   }
 
-  // --- THIS FUNCTION IS UPDATED FOR THE NEW WORKFLOW ---
-  stopRecording() {
-    if (!this.isRecording) return;
-    this.isRecording = false; // Set recording to false immediately
-
-    // Stop microphone tracks and audio processing
-    this.mediaStream.getTracks().forEach(track => track.stop());
-    if (this.processor) this.processor.disconnect();
-    if (this.audioContext) this.audioContext.close();
-
-    // Send the "stop_recording" message as per the new docs
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "stop_recording" }));
+  async getSalesNotes(transcribedText) {
+    if (!this.geminiApiKey || !transcribedText) {
+      return;
     }
 
-    // Update UI
-    this.startBtn.disabled = false;
-    this.stopBtn.disabled = true;
-    this.recordingIndicator.classList.remove('active');
-  }
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`;
+    const prompt = `You are an expert sales meeting assistant. Based on the following transcript of what a salesperson just said, provide a single, short, actionable note or a clever question they should ask next to advance the sale. Be concise and direct. Keep the response to one sentence.
 
-  // --- NO CHANGES NEEDED FOR THE FUNCTIONS BELOW ---
+Transcript context: "${transcribedText}"
+
+Your suggestion:`;
+
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.6, maxOutputTokens: 50 },
+        }),
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data.candidates && data.candidates.length > 0) {
+        const noteText = data.candidates[0].content.parts[0].text;
+        this.appendSalesNote(noteText.trim());
+      }
+    } catch (error) {
+      console.error("Gemini API Error:", error);
+    }
+  }
 
   async startRecording() {
     if (this.isRecording) return;
-
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: { sampleRate: this.sampleRate, channelCount: 1, echoCancellation: true }
       });
-
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-        sampleRate: this.sampleRate,
-      });
-
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: this.sampleRate });
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.processor = this.audioContext.createScriptProcessor(2048, 1, 1);
-
       this.processor.onaudioprocess = (event) => {
-        if (!this.isRecording || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-          return;
-        }
+        if (!this.isRecording || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         const audioData = event.inputBuffer.getChannelData(0);
         const pcmData = new Int16Array(audioData.length);
         for (let i = 0; i < audioData.length; i++) {
@@ -156,24 +150,44 @@ class TranscriptionApp {
         }
         this.ws.send(pcmData.buffer);
       };
-
       source.connect(this.processor);
       this.processor.connect(this.audioContext.destination);
-
       this.isRecording = true;
       this.startBtn.disabled = true;
       this.stopBtn.disabled = false;
       this.recordingIndicator.classList.add('active');
     } catch (error) {
-      console.error('Error starting recording:', error);
       alert('Could not access the microphone. Please ensure you grant permission.');
     }
   }
 
+  stopRecording() {
+    if (!this.isRecording) return;
+    this.isRecording = false;
+    this.mediaStream.getTracks().forEach(track => track.stop());
+    if (this.processor) this.processor.disconnect();
+    if (this.audioContext) this.audioContext.close();
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "stop_recording" }));
+    }
+    this.startBtn.disabled = false;
+    this.stopBtn.disabled = true;
+    this.recordingIndicator.classList.remove('active');
+    this.fullTranscript = "";
+  }
+
   appendTranscription(text) {
-    const textNode = document.createTextNode(text + ' ');
-    this.transcriptionEl.appendChild(textNode);
+    const p = document.createElement('p');
+    p.textContent = text;
+    this.transcriptionEl.appendChild(p);
     this.transcriptionEl.scrollTop = this.transcriptionEl.scrollHeight;
+  }
+
+  appendSalesNote(text) {
+    const p = document.createElement('p');
+    p.textContent = `✨ ${text}`;
+    this.notesEl.appendChild(p);
+    this.notesEl.scrollTop = this.notesEl.scrollHeight;
   }
 }
 
